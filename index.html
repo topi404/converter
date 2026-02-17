@@ -1,81 +1,22 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-<meta charset="UTF-8">
-<title>Конвертер температуры</title>
-
-<style>
-body {
-  font-family: Arial, sans-serif;
-  background: #f4f4f4;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 100vh;
-}
-
-.card {
-  background: white;
-  padding: 25px;
-  border-radius: 10px;
-  box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-  text-align: center;
-}
-
-input {
-  padding: 8px;
-  font-size: 16px;
-  width: 150px;
-}
-
-button {
-  padding: 8px 12px;
-  margin: 5px;
-  font-size: 14px;
-  cursor: pointer;
-}
-
-#result {
-  margin-top: 15px;
-  font-weight: bold;
-}
-</style>
-</head>
-
 <body>
+  <!-- Другой контент сайта -->
 
-<div class="card">
-  <h2>Конвертер температуры</h2>
+  <!-- Блок конвертера -->
+  <div id="image-converter">
+    <h2>Конвертер картинок</h2>
+    <input type="file" id="inputImage" accept="image/*">
+    <select id="outputFormat">
+      <option value="png">PNG</option>
+      <option value="jpeg">JPG</option>
+      <option value="webp">WEBP</option>
+    </select>
+    <button id="convertBtn">Конвертировать</button>
+    <br>
+    <a id="downloadLink" style="display:none">Скачать</a>
+    <br>
+    <canvas id="canvas" style="display:none"></canvas>
+  </div>
 
-  <input id="temp" type="number" placeholder="Введите число">
-
-  <br><br>
-
-  <button onclick="toF()">°C → °F</button>
-  <button onclick="toC()">°F → °C</button>
-
-  <div id="result"></div>
-</div>
-
-<script>
-function toF() {
-  let c = parseFloat(document.getElementById("temp").value);
-  if (isNaN(c)) return show("Введите число");
-  let f = c * 9/5 + 32;
-  show(`${c} °C = ${f.toFixed(2)} °F`);
-}
-
-function toC() {
-  let f = parseFloat(document.getElementById("temp").value);
-  if (isNaN(f)) return show("Введите число");
-  let c = (f - 32) * 5/9;
-  show(`${f} °F = ${c.toFixed(2)} °C`);
-}
-
-function show(text) {
-  document.getElementById("result").textContent = text;
-}
-</script>
-
+  <!-- Подключаем JS -->
+  <script src="converter.js"></script>
 </body>
-</html>
