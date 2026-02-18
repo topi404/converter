@@ -1,0 +1,1000 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Morphix — Конвертер файлов</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ffmpeg/0.11.6/ffmpeg.min.js"></script>
+<style>
+  :root {
+    --bg:      #0a0a0f;
+    --surface: #12121a;
+    --border:  #1e1e2e;
+    --accent:  #e8ff47;
+    --red:     #ff4757;
+    --text:    #e8e8f0;
+    --muted:   #555570;
+    --green:   #47ffb8;
+    --pro:     #f0b429;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Сетка на фоне */
+  body::before {
+    content: ''; position: fixed; inset: 0; pointer-events: none;
+    background-image:
+      linear-gradient(rgba(232,255,71,0.02) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(232,255,71,0.02) 1px, transparent 1px);
+    background-size: 60px 60px;
+  }
+
+  /* Шапка */
+  header {
+    padding: 1.1rem 2.5rem;
+    display: flex; align-items: center; gap: 1rem;
+    border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; z-index: 20;
+    background: rgba(10,10,15,0.93);
+    backdrop-filter: blur(14px);
+  }
+  .logo { font-size: 1.35rem; font-weight: 800; letter-spacing: -0.03em; color: var(--accent); }
+  .logo span { color: var(--text); }
+  .pro-btn {
+    margin-left: auto;
+    background: #1a1400; border: 1px solid var(--pro); color: var(--pro);
+    font-family: 'Space Mono', monospace; font-size: 0.62rem; font-weight: 700;
+    letter-spacing: 0.07em; padding: 0.3rem 0.8rem; border-radius: 2px;
+    cursor: pointer; transition: all 0.15s; white-space: nowrap;
+  }
+  .pro-btn:hover { background: var(--pro); color: var(--bg); }
+  .pro-btn.active { background: var(--pro); color: var(--bg); cursor: default; pointer-events: none; }
+
+  /* Основной контент */
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 3rem 2rem 4rem; }
+
+  h1 { font-size: clamp(2rem, 5vw, 3.2rem); font-weight: 800; line-height: 1.05; letter-spacing: -0.04em; margin-bottom: 0.4rem; }
+  h1 em { font-style: normal; color: var(--accent); }
+  .sub { color: var(--muted); font-family: 'Space Mono', monospace; font-size: 0.78rem; margin-bottom: 2.5rem; }
+
+  /* Баннер Pro активен */
+  .pro-bar {
+    display: none; align-items: center; gap: 0.5rem;
+    background: rgba(240,180,41,0.07); border: 1px solid rgba(240,180,41,0.25);
+    border-radius: 4px; padding: 0.6rem 1.1rem; margin-bottom: 1.5rem;
+    font-family: 'Space Mono', monospace; font-size: 0.7rem; color: var(--pro);
+  }
+  .pro-bar.on { display: flex; }
+
+  /* Табы категорий */
+  .tabs {
+    display: flex; gap: 0.4rem; flex-wrap: wrap;
+    margin-bottom: 2rem; padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .tab {
+    display: flex; align-items: center; gap: 0.4rem;
+    padding: 0.4rem 0.9rem; border-radius: 2px; cursor: pointer;
+    background: var(--surface); border: 1px solid var(--border);
+    font-family: 'Space Mono', monospace; font-size: 0.67rem; color: var(--muted);
+    transition: all 0.15s; white-space: nowrap;
+  }
+  .tab:hover { border-color: var(--muted); color: var(--text); }
+  .tab.on { background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: 700; }
+
+  /* Панели */
+  .panel { display: none; animation: up 0.18s ease; }
+  .panel.on { display: block; }
+  @keyframes up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+  /* Зона загрузки */
+  .dropzone {
+    border: 2px dashed var(--border); border-radius: 4px;
+    padding: 2.5rem 2rem; text-align: center; cursor: pointer;
+    transition: all 0.2s; position: relative; overflow: hidden; margin-bottom: 1.5rem;
+  }
+  .dropzone::before {
+    content: ''; position: absolute; inset: 0; opacity: 0; transition: opacity 0.3s;
+    background: radial-gradient(ellipse at 50% 120%, rgba(232,255,71,0.05) 0%, transparent 70%);
+  }
+  .dropzone:hover::before, .dropzone.over::before { opacity: 1; }
+  .dropzone:hover, .dropzone.over { border-color: var(--accent); border-style: solid; }
+  .dz-icon { font-size: 2.2rem; margin-bottom: 0.7rem; display: block; }
+  .dz-title { font-size: 1rem; font-weight: 700; margin-bottom: 0.3rem; }
+  .dz-hint { font-family: 'Space Mono', monospace; font-size: 0.68rem; color: var(--muted); }
+
+  /* Список файлов */
+  .label {
+    font-family: 'Space Mono', monospace; font-size: 0.65rem; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 0.8rem;
+    display: flex; align-items: center; gap: 0.5rem;
+  }
+  .label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+  .file-row {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 4px;
+    padding: 0.8rem 1rem; margin-bottom: 0.4rem;
+    display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 0.9rem;
+    animation: up 0.18s ease;
+  }
+  .badge {
+    font-family: 'Space Mono', monospace; font-size: 0.57rem; font-weight: 700;
+    padding: 0.18rem 0.4rem; border-radius: 2px; text-transform: uppercase;
+  }
+  .b-image { background: #1a2a4a; color: #47b8ff; }
+  .b-video { background: #2a1a3a; color: #b847ff; }
+  .b-audio { background: #1a3a2a; color: #47ffb8; }
+  .b-doc   { background: #2a1a1a; color: #ff8c47; }
+
+  .fname { font-size: 0.85rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .fsize { font-family: 'Space Mono', monospace; font-size: 0.63rem; color: var(--muted); }
+
+  select {
+    appearance: none; background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    font-family: 'Space Mono', monospace; font-size: 0.68rem;
+    padding: 0.3rem 1.6rem 0.3rem 0.6rem; border-radius: 2px; cursor: pointer;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='7' viewBox='0 0 10 7'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23555570' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 0.45rem center;
+    transition: border-color 0.15s;
+  }
+  select:focus { outline: none; border-color: var(--accent); }
+
+  .del { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 1rem; padding: 0 0.2rem; transition: color 0.15s; }
+  .del:hover { color: var(--red); }
+
+  /* Кнопки */
+  .actions { margin-top: 1.4rem; display: flex; gap: 0.7rem; flex-wrap: wrap; }
+  .btn { padding: 0.68rem 1.5rem; border: none; border-radius: 2px; font-family: 'Syne', sans-serif; font-weight: 700; font-size: 0.85rem; cursor: pointer; transition: all 0.15s; }
+  .btn-go  { background: var(--accent); color: var(--bg); }
+  .btn-go:hover { background: #fff; transform: translateY(-1px); }
+  .btn-go:disabled { background: var(--border); color: var(--muted); cursor: not-allowed; transform: none; }
+  .btn-clr { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+  .btn-clr:hover { border-color: var(--muted); color: var(--text); }
+
+  /* Прогресс */
+  .prog { margin-top: 1.4rem; display: none; }
+  .prog.on { display: block; }
+  .prog-top { font-family: 'Space Mono', monospace; font-size: 0.68rem; color: var(--muted); margin-bottom: 0.4rem; display: flex; justify-content: space-between; }
+  .prog-bar { height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; }
+  .prog-fill { height: 100%; background: var(--accent); width: 0%; transition: width 0.3s; }
+
+  /* Результаты */
+  .results { margin-top: 1.8rem; display: none; }
+  .results.on { display: block; }
+  .res-row {
+    background: var(--surface); border: 1px solid var(--green); border-radius: 4px;
+    padding: 0.7rem 1rem; margin-bottom: 0.4rem;
+    display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+    animation: up 0.18s ease;
+  }
+  .res-name { font-size: 0.85rem; font-weight: 700; color: var(--green); }
+  .dl {
+    padding: 0.28rem 0.7rem; background: var(--green); color: var(--bg);
+    border: none; border-radius: 2px; font-family: 'Space Mono', monospace;
+    font-size: 0.63rem; font-weight: 700; cursor: pointer; text-decoration: none; transition: opacity 0.15s;
+  }
+  .dl:hover { opacity: 0.8; }
+
+  /* Единицы измерения */
+  .unit-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; }
+  .unit-card { background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 1.1rem; }
+  .unit-title { font-weight: 800; font-size: 0.9rem; margin-bottom: 0.9rem; }
+  .unit-row { display: flex; gap: 0.4rem; align-items: center; margin-bottom: 0.5rem; }
+  .unit-input {
+    flex: 1; background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    font-family: 'Space Mono', monospace; font-size: 0.78rem; padding: 0.38rem 0.55rem;
+    border-radius: 2px; transition: border-color 0.15s;
+  }
+  .unit-input:focus { outline: none; border-color: var(--accent); }
+  .unit-lbl { font-family: 'Space Mono', monospace; font-size: 0.58rem; color: var(--muted); width: 55px; text-align: right; }
+  .unit-arr { color: var(--muted); font-size: 0.75rem; }
+
+  /* Подвал */
+  .foot { margin-top: 3rem; font-family: 'Space Mono', monospace; font-size: 0.65rem; color: var(--muted); }
+  .foot span { color: var(--accent); }
+
+  /* Модалка Pro */
+  .overlay {
+    position: fixed; inset: 0; z-index: 100;
+    background: rgba(0,0,0,0.82); backdrop-filter: blur(10px);
+    display: flex; align-items: center; justify-content: center; padding: 1rem;
+    opacity: 0; pointer-events: none; transition: opacity 0.2s;
+  }
+  .overlay.on { opacity: 1; pointer-events: all; }
+  .modal {
+    background: var(--surface); border: 1px solid rgba(240,180,41,0.3); border-radius: 6px;
+    width: 100%; max-width: 480px; overflow: hidden;
+    transform: translateY(14px) scale(0.97); transition: transform 0.2s ease;
+    box-shadow: 0 0 60px rgba(240,180,41,0.07);
+  }
+  .overlay.on .modal { transform: none; }
+
+  .modal-head {
+    padding: 1.3rem 1.6rem 1rem; border-bottom: 1px solid var(--border);
+    display: flex; align-items: flex-start; justify-content: space-between;
+  }
+  .modal-title { font-size: 1.4rem; font-weight: 800; letter-spacing: -0.03em; }
+  .modal-title em { font-style: normal; color: var(--pro); }
+  .modal-tag { font-family: 'Space Mono', monospace; font-size: 0.65rem; color: var(--muted); margin-top: 0.2rem; }
+  .modal-x { background: none; border: none; color: var(--muted); font-size: 1.2rem; cursor: pointer; transition: color 0.15s; }
+  .modal-x:hover { color: var(--text); }
+  .modal-body { padding: 1.3rem 1.6rem; }
+  .modal-foot { padding: 0.7rem 1.6rem 1rem; border-top: 1px solid var(--border); text-align: center; font-family: 'Space Mono', monospace; font-size: 0.58rem; color: var(--muted); }
+
+  /* Фичи */
+  .feats { list-style: none; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; margin-bottom: 1.3rem; }
+  .feats li { display: flex; align-items: center; gap: 0.7rem; padding: 0.52rem 0.9rem; border-bottom: 1px solid var(--border); font-size: 0.8rem; }
+  .feats li:last-child { border-bottom: none; }
+  .fi { font-size: 0.88rem; flex-shrink: 0; }
+  .fl { flex: 1; }
+  .tag-free { font-family: 'Space Mono', monospace; font-size: 0.55rem; padding: 0.1rem 0.35rem; background: var(--border); color: var(--muted); border-radius: 2px; }
+  .tag-pro  { font-family: 'Space Mono', monospace; font-size: 0.55rem; padding: 0.1rem 0.35rem; background: rgba(240,180,41,0.12); color: var(--pro); border-radius: 2px; }
+
+  /* Планы */
+  .plans { display: grid; grid-template-columns: 1fr 1fr; gap: 0.7rem; }
+  .plan {
+    border: 1.5px solid var(--border); border-radius: 4px; padding: 1rem;
+    cursor: pointer; transition: all 0.15s; position: relative; user-select: none;
+  }
+  .plan:hover { border-color: var(--pro); background: rgba(240,180,41,0.03); }
+  .plan-hot { border-color: rgba(240,180,41,0.35); background: rgba(240,180,41,0.03); }
+  .hot-tag { position: absolute; top: -1px; right: -1px; background: var(--pro); color: var(--bg); font-family: 'Space Mono', monospace; font-size: 0.48rem; font-weight: 700; padding: 0.1rem 0.4rem; border-radius: 0 4px 0 2px; letter-spacing: 0.06em; }
+  .plan-name { font-weight: 800; font-size: 0.9rem; margin-bottom: 0.1rem; }
+  .plan-price { font-family: 'Space Mono', monospace; font-size: 1rem; color: var(--pro); margin-bottom: 0.3rem; }
+  .plan-price sub { font-size: 0.55rem; color: var(--muted); }
+  .plan-desc { font-family: 'Space Mono', monospace; font-size: 0.58rem; color: var(--muted); line-height: 1.5; }
+  .plan-cta { margin-top: 0.55rem; font-family: 'Space Mono', monospace; font-size: 0.58rem; color: var(--muted); transition: color 0.15s; }
+  .plan:hover .plan-cta { color: var(--pro); }
+
+  /* Форма оплаты (шаг 2) */
+  .back-btn {
+    background: none; border: 1px solid var(--border); color: var(--muted);
+    width: 1.9rem; height: 1.9rem; border-radius: 2px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; font-size: 0.9rem;
+    transition: all 0.15s; flex-shrink: 0;
+  }
+  .back-btn:hover { border-color: var(--text); color: var(--text); }
+
+  .form { display: flex; flex-direction: column; gap: 0.55rem; margin-bottom: 1rem; }
+  .field { display: flex; flex-direction: column; gap: 0.28rem; }
+  .field label { font-family: 'Space Mono', monospace; font-size: 0.58rem; color: var(--muted); }
+  .field input {
+    background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    font-family: 'Space Mono', monospace; font-size: 0.85rem;
+    padding: 0.62rem 0.85rem; border-radius: 3px; transition: border-color 0.2s; width: 100%;
+  }
+  .field input:focus { outline: none; border-color: var(--pro); }
+  .field input::placeholder { color: var(--muted); }
+  .field input.err { border-color: var(--red); }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.55rem; }
+  .form-err { font-family: 'Space Mono', monospace; font-size: 0.62rem; color: var(--red); min-height: 1rem; }
+
+  .pay-btn {
+    width: 100%; padding: 0.82rem; background: var(--pro); color: var(--bg);
+    border: none; border-radius: 3px; font-family: 'Syne', sans-serif;
+    font-weight: 800; font-size: 0.92rem; cursor: pointer; transition: all 0.15s;
+  }
+  .pay-btn:hover { background: #fff; }
+  .pay-btn:disabled { background: var(--border); color: var(--muted); cursor: not-allowed; }
+
+  @media (max-width: 600px) {
+    header { padding: 1rem 1.2rem; }
+    .wrap { padding: 2rem 1rem 3rem; }
+    .file-row { grid-template-columns: auto 1fr auto; }
+    .fsize { display: none; }
+    .plans { grid-template-columns: 1fr; }
+    .row2 { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Mor<span>phix</span></div>
+  <button class="pro-btn" id="proBtn" onclick="openModal()">★ Upgrade to Pro</button>
+</header>
+
+<div class="wrap">
+  <h1>Конвертер <em>всего.</em></h1>
+  <p class="sub">// видео · аудио · фото · документы · единицы — прямо в браузере</p>
+
+  <div class="pro-bar" id="proBar">★ Pro активен — максимальное качество на всех форматах</div>
+
+  <!-- Табы -->
+  <div class="tabs">
+    <div class="tab on"  data-p="video" onclick="switchTab(this)">🎬 Видео</div>
+    <div class="tab"     data-p="audio" onclick="switchTab(this)">🎵 Аудио</div>
+    <div class="tab"     data-p="image" onclick="switchTab(this)">🖼️ Фото</div>
+    <div class="tab"     data-p="doc"   onclick="switchTab(this)">📄 Документы</div>
+    <div class="tab"     data-p="unit"  onclick="switchTab(this)">📐 Единицы</div>
+  </div>
+
+  <!-- Видео -->
+  <div class="panel on" id="panel-video">
+    <div class="dropzone" id="dz-video" onclick="document.getElementById('fi-video').click()">
+      <span class="dz-icon">🎬</span>
+      <div class="dz-title">Перетащи видео сюда</div>
+      <div class="dz-hint">MP4 · WebM · AVI · MOV · MKV · или Video в GIF</div>
+      <input type="file" id="fi-video" hidden multiple accept="video/*,.avi,.mkv,.mov">
+    </div>
+    <div id="list-video"></div>
+    <div class="actions" id="act-video" style="display:none">
+      <button class="btn btn-go"  onclick="convert('video')">Конвертировать</button>
+      <button class="btn btn-clr" onclick="clearCat('video')">Очистить</button>
+    </div>
+    <div class="prog" id="prog-video">
+      <div class="prog-top"><span id="prog-video-lbl">Обработка...</span><span id="prog-video-pct">0%</span></div>
+      <div class="prog-bar"><div class="prog-fill" id="prog-video-fill"></div></div>
+    </div>
+    <div class="results" id="res-video"><div class="label">готово</div><div id="reslist-video"></div></div>
+  </div>
+
+  <!-- Аудио -->
+  <div class="panel" id="panel-audio">
+    <div class="dropzone" id="dz-audio" onclick="document.getElementById('fi-audio').click()">
+      <span class="dz-icon">🎵</span>
+      <div class="dz-title">Перетащи аудио сюда</div>
+      <div class="dz-hint">MP3 · WAV · OGG · AAC · FLAC · M4A · Opus</div>
+      <input type="file" id="fi-audio" hidden multiple accept="audio/*,.flac,.opus,.m4a">
+    </div>
+    <div id="list-audio"></div>
+    <div class="actions" id="act-audio" style="display:none">
+      <button class="btn btn-go"  onclick="convert('audio')">Конвертировать</button>
+      <button class="btn btn-clr" onclick="clearCat('audio')">Очистить</button>
+    </div>
+    <div class="prog" id="prog-audio">
+      <div class="prog-top"><span id="prog-audio-lbl">Обработка...</span><span id="prog-audio-pct">0%</span></div>
+      <div class="prog-bar"><div class="prog-fill" id="prog-audio-fill"></div></div>
+    </div>
+    <div class="results" id="res-audio"><div class="label">готово</div><div id="reslist-audio"></div></div>
+  </div>
+
+  <!-- Фото -->
+  <div class="panel" id="panel-image">
+    <div class="dropzone" id="dz-image" onclick="document.getElementById('fi-image').click()">
+      <span class="dz-icon">🖼️</span>
+      <div class="dz-title">Перетащи изображения сюда</div>
+      <div class="dz-hint">JPG · PNG · WebP · BMP · GIF · AVIF · в PDF</div>
+      <input type="file" id="fi-image" hidden multiple accept="image/*">
+    </div>
+    <div id="list-image"></div>
+    <div class="actions" id="act-image" style="display:none">
+      <button class="btn btn-go"  onclick="convert('image')">Конвертировать</button>
+      <button class="btn btn-clr" onclick="clearCat('image')">Очистить</button>
+    </div>
+    <div class="prog" id="prog-image">
+      <div class="prog-top"><span id="prog-image-lbl">Обработка...</span><span id="prog-image-pct">0%</span></div>
+      <div class="prog-bar"><div class="prog-fill" id="prog-image-fill"></div></div>
+    </div>
+    <div class="results" id="res-image"><div class="label">готово</div><div id="reslist-image"></div></div>
+  </div>
+
+  <!-- Документы -->
+  <div class="panel" id="panel-doc">
+    <div class="dropzone" id="dz-doc" onclick="document.getElementById('fi-doc').click()">
+      <span class="dz-icon">📄</span>
+      <div class="dz-title">Перетащи документы сюда</div>
+      <div class="dz-hint">TXT · MD · HTML · EPUB → конвертация в браузере</div>
+      <input type="file" id="fi-doc" hidden multiple accept=".txt,.md,.html,.htm,.epub,.rtf">
+    </div>
+    <div id="list-doc"></div>
+    <div class="actions" id="act-doc" style="display:none">
+      <button class="btn btn-go"  onclick="convert('doc')">Конвертировать</button>
+      <button class="btn btn-clr" onclick="clearCat('doc')">Очистить</button>
+    </div>
+    <div class="prog" id="prog-doc">
+      <div class="prog-top"><span id="prog-doc-lbl">Обработка...</span><span id="prog-doc-pct">0%</span></div>
+      <div class="prog-bar"><div class="prog-fill" id="prog-doc-fill"></div></div>
+    </div>
+    <div class="results" id="res-doc"><div class="label">готово</div><div id="reslist-doc"></div></div>
+  </div>
+
+  <!-- Единицы -->
+  <div class="panel" id="panel-unit">
+    <div class="unit-grid" id="unitGrid"></div>
+  </div>
+
+  <div class="foot"><span>Приватность:</span> все файлы обрабатываются прямо в браузере и никуда не отправляются.</div>
+</div>
+
+<!-- Модалка Pro -->
+<div class="overlay" id="overlay" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+
+    <!-- Шаг 1: выбор плана -->
+    <div id="step1">
+      <div class="modal-head">
+        <div>
+          <div class="modal-title">Morphix <em>Pro</em></div>
+          <div class="modal-tag">// максимальное качество на всех форматах</div>
+        </div>
+        <button class="modal-x" onclick="closeModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <ul class="feats">
+          <li><span class="fi">⚡</span><span class="fl">Скорость конвертации</span><span class="tag-free">стандартная</span></li>
+          <li><span class="fi">💎</span><span class="fl">Качество вывода</span><span class="tag-pro">★ максимальное</span></li>
+          <li><span class="fi">🎞️</span><span class="fl">Аудио битрейт</span><span class="tag-pro">★ до 320 kbps</span></li>
+          <li><span class="fi">🗜️</span><span class="fl">Размер файла</span><span class="tag-pro">★ до 2 GB</span></li>
+          <li><span class="fi">📦</span><span class="fl">Количество файлов</span><span class="tag-pro">★ без лимита</span></li>
+        </ul>
+        <div class="plans">
+          <div class="plan" onclick="goStep2('monthly')">
+            <div class="plan-name">Месяц</div>
+            <div class="plan-price">$4.99<sub>/мес</sub></div>
+            <div class="plan-desc">Подписка<br>Отмена в любой момент</div>
+            <div class="plan-cta">Выбрать →</div>
+          </div>
+          <div class="plan plan-hot" onclick="goStep2('yearly')">
+            <div class="hot-tag">ВЫГОДНО</div>
+            <div class="plan-name">Год</div>
+            <div class="plan-price">$29<sub>/год</sub></div>
+            <div class="plan-desc">2 месяца в подарок<br>Оплата раз в год</div>
+            <div class="plan-cta">Выбрать →</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Шаг 2: форма оплаты -->
+    <div id="step2" style="display:none">
+      <div class="modal-head">
+        <div style="display:flex;align-items:center;gap:0.65rem">
+          <button class="back-btn" onclick="goStep1()">←</button>
+          <div>
+            <div class="modal-title" id="s2title">Оплата</div>
+            <div class="modal-tag"  id="s2sub"></div>
+          </div>
+        </div>
+        <button class="modal-x" onclick="closeModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form">
+          <div class="field">
+            <label>Email</label>
+            <input type="email" id="f-email" placeholder="you@example.com" autocomplete="email">
+          </div>
+          <div class="field">
+            <label>Номер карты</label>
+            <input type="text" id="f-card" placeholder="0000 0000 0000 0000" maxlength="19" autocomplete="cc-number" oninput="fmtCard(this)">
+          </div>
+          <div class="row2">
+            <div class="field">
+              <label>Срок</label>
+              <input type="text" id="f-exp" placeholder="ММ / ГГ" maxlength="7" autocomplete="cc-exp" oninput="fmtExp(this)">
+            </div>
+            <div class="field">
+              <label>CVV</label>
+              <input type="text" id="f-cvv" placeholder="•••" maxlength="4" autocomplete="cc-csc" oninput="this.value=this.value.replace(/\D/g,'')">
+            </div>
+          </div>
+          <div class="field">
+            <label>Имя на карте</label>
+            <input type="text" id="f-name" placeholder="IVAN PETROV" autocomplete="cc-name" oninput="this.value=this.value.toUpperCase()">
+          </div>
+          <div class="form-err" id="form-err"></div>
+        </div>
+        <button class="pay-btn" id="payBtn" onclick="pay()">★ Оплатить</button>
+      </div>
+      <div class="modal-foot">🔒 Безопасная оплата · данные карты не хранятся</div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ─────────────────────────────────────────
+// НАСТРОЙКИ — вставь ссылки из Stripe Dashboard
+// Stripe Dashboard → Payment Links → создай два продукта
+// ─────────────────────────────────────────
+const LINK_MONTH = ''; // ссылка для месячной подписки
+const LINK_YEAR  = ''; // ссылка для годовой подписки
+
+
+// ─────────────────────────────────────────
+// PRO — сохраняется в браузере
+// ─────────────────────────────────────────
+let isPro = localStorage.getItem('morphix_pro') === '1';
+
+function activatePro() {
+  isPro = true;
+  localStorage.setItem('morphix_pro', '1');
+  document.getElementById('proBtn').textContent = '★ Pro активен';
+  document.getElementById('proBtn').classList.add('active');
+  document.getElementById('proBar').classList.add('on');
+}
+
+// Проверяем редирект после оплаты
+if (new URLSearchParams(location.search).get('pro') === 'ok') {
+  activatePro();
+  history.replaceState({}, '', location.pathname);
+}
+if (isPro) activatePro();
+
+
+// ─────────────────────────────────────────
+// ФОРМАТЫ
+// ─────────────────────────────────────────
+const FMTS = {
+  video: ['mp4','webm','avi','mov','mkv','gif'],
+  audio: ['mp3','wav','ogg','aac','flac','m4a','opus'],
+  image: ['jpeg','png','webp','bmp','gif','avif','pdf'],
+  doc:   { txt:['html','pdf'], md:['html','pdf'], html:['txt','pdf'], htm:['txt','pdf'], epub:['txt','html'], rtf:['txt'] },
+};
+
+const MIME = {
+  mp4:'video/mp4', webm:'video/webm', avi:'video/x-msvideo', mov:'video/quicktime', mkv:'video/x-matroska',
+  mp3:'audio/mpeg', wav:'audio/wav', ogg:'audio/ogg', aac:'audio/aac', flac:'audio/flac', m4a:'audio/mp4', opus:'audio/opus',
+  jpeg:'image/jpeg', png:'image/png', webp:'image/webp', bmp:'image/bmp', gif:'image/gif', avif:'image/avif',
+  pdf:'application/pdf', txt:'text/plain', html:'text/html',
+};
+
+function getFormats(file, cat) {
+  const ext = file.name.split('.').pop().toLowerCase();
+  if (cat === 'doc') return FMTS.doc[ext] || ['txt'];
+  return FMTS[cat].filter(f => f !== ext.replace('jpg','jpeg'));
+}
+
+function fmtSize(b) {
+  if (b < 1048576) return (b/1024).toFixed(0) + ' KB';
+  if (b < 1073741824) return (b/1048576).toFixed(1) + ' MB';
+  return (b/1073741824).toFixed(2) + ' GB';
+}
+
+
+// ─────────────────────────────────────────
+// СОСТОЯНИЕ — файлы по категориям
+// ─────────────────────────────────────────
+const queue = { video:[], audio:[], image:[], doc:[] };
+
+function addFiles(cat, files) {
+  files.forEach(f => {
+    const fmts = getFormats(f, cat);
+    if (!fmts.length) return;
+    queue[cat].push({ file: f, fmt: fmts[0] });
+  });
+  renderList(cat);
+}
+
+function renderList(cat) {
+  const box = document.getElementById('list-' + cat);
+  const act = document.getElementById('act-' + cat);
+  box.innerHTML = '';
+  if (!queue[cat].length) { act.style.display = 'none'; return; }
+  act.style.display = 'flex';
+
+  const lbl = document.createElement('div');
+  lbl.className = 'label'; lbl.textContent = 'файлы';
+  box.appendChild(lbl);
+
+  queue[cat].forEach((item, i) => {
+    const ext  = item.file.name.split('.').pop().toLowerCase();
+    const fmts = getFormats(item.file, cat);
+    const opts = fmts.map(f => `<option value="${f}" ${f===item.fmt?'selected':''}>${f.toUpperCase()}</option>`).join('');
+
+    const row = document.createElement('div');
+    row.className = 'file-row';
+    row.innerHTML = `
+      <span class="badge b-${cat}">${cat}</span>
+      <div><div class="fname">${item.file.name}</div><div class="fsize">${fmtSize(item.file.size)}</div></div>
+      <select data-i="${i}" data-cat="${cat}">${opts}</select>
+      <button class="del" data-i="${i}" data-cat="${cat}">✕</button>
+    `;
+    box.appendChild(row);
+  });
+
+  box.querySelectorAll('select').forEach(s => s.onchange = e => { queue[cat][+e.target.dataset.i].fmt = e.target.value; });
+  box.querySelectorAll('.del').forEach(b => b.onclick = e => { queue[cat].splice(+e.target.dataset.i, 1); renderList(cat); });
+}
+
+function clearCat(cat) {
+  queue[cat] = [];
+  renderList(cat);
+  document.getElementById('res-'  + cat).classList.remove('on');
+  document.getElementById('prog-' + cat).classList.remove('on');
+}
+
+
+// ─────────────────────────────────────────
+// DRAG & DROP
+// ─────────────────────────────────────────
+['video','audio','image','doc'].forEach(cat => {
+  const dz = document.getElementById('dz-' + cat);
+  const fi = document.getElementById('fi-' + cat);
+  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('over'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('over'));
+  dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('over'); addFiles(cat, [...e.dataTransfer.files]); });
+  fi.addEventListener('change', () => { addFiles(cat, [...fi.files]); fi.value = ''; });
+});
+
+
+// ─────────────────────────────────────────
+// КОНВЕРТАЦИЯ ВИДЕО И АУДИО (FFmpeg)
+// ─────────────────────────────────────────
+let ff = null;
+
+async function loadFF() {
+  if (ff) return;
+  const { createFFmpeg, fetchFile } = FFmpeg;
+  ff = createFFmpeg({ log: false });
+  await ff.load();
+  window._ffFetch = fetchFile;
+}
+
+async function convertAV(file, fmt, cat) {
+  await loadFF();
+  const ext = file.name.split('.').pop().toLowerCase();
+  ff.FS('writeFile', `in.${ext}`, await window._ffFetch(file));
+
+  let args;
+  if (cat === 'video' && fmt === 'gif') {
+    // Видео в GIF — уменьшаем размер для нормального веса
+    args = ['-i', `in.${ext}`, '-vf', 'fps=12,scale=480:-1:flags=lanczos', '-loop', '0', `out.${fmt}`];
+  } else if (cat === 'video') {
+    const quality = isPro ? ['-preset','slow','-crf','17'] : ['-preset','fast','-crf','23'];
+    args = ['-i', `in.${ext}`, ...quality, `out.${fmt}`];
+  } else {
+    // Аудио — Pro получает 320kbps, бесплатно 192kbps
+    args = ['-i', `in.${ext}`, '-b:a', isPro ? '320k' : '192k', `out.${fmt}`];
+  }
+
+  await ff.run(...args);
+  const data = ff.FS('readFile', `out.${fmt}`);
+  try { ff.FS('unlink', `in.${ext}`); ff.FS('unlink', `out.${fmt}`); } catch(e) {}
+  return new Blob([data.buffer], { type: MIME[fmt] || 'application/octet-stream' });
+}
+
+
+// ─────────────────────────────────────────
+// КОНВЕРТАЦИЯ ИЗОБРАЖЕНИЙ (Canvas)
+// ─────────────────────────────────────────
+function convertImage(file, fmt) {
+  return new Promise((resolve, reject) => {
+    if (fmt === 'pdf') {
+      // Вставляем картинку в минимальный PDF
+      const img = new Image(), url = URL.createObjectURL(file);
+      img.onload = () => {
+        const c = document.createElement('canvas');
+        c.width = img.width; c.height = img.height;
+        c.getContext('2d').drawImage(img, 0, 0);
+        URL.revokeObjectURL(url);
+        c.toBlob(blob => {
+          const r = new FileReader();
+          r.onload = () => resolve(new Blob([buildPdf(r.result.split(',')[1], img.width, img.height)], { type: 'application/pdf' }));
+          r.readAsDataURL(blob);
+        }, 'image/jpeg', 0.92);
+      };
+      img.onerror = () => reject(new Error('Не удалось открыть файл'));
+      img.src = url;
+      return;
+    }
+
+    const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      c.width = img.width; c.height = img.height;
+      const ctx = c.getContext('2d');
+      if (fmt === 'jpeg') { ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height); }
+      ctx.drawImage(img, 0, 0);
+      URL.revokeObjectURL(url);
+      // Pro — чуть выше качество JPEG/WebP
+      c.toBlob(blob => blob ? resolve(blob) : reject(new Error('Ошибка')), MIME[fmt] || 'image/png', isPro ? 0.97 : 0.88);
+    };
+    img.onerror = () => reject(new Error('Не удалось открыть файл'));
+    img.src = url;
+  });
+}
+
+function buildPdf(jpegB64, w, h) {
+  // Минимальный валидный PDF с одной картинкой
+  const pw = Math.round(w * 0.75), ph = Math.round(h * 0.75);
+  const img = atob(jpegB64);
+  const stream = `q ${pw} 0 0 ${ph} 0 0 cm /I1 Do Q`;
+  let pdf = `%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 ${pw} ${ph}]/Contents 4 0 R/Resources<</XObject<</I1 5 0 R>>>>>>endobj\n4 0 obj<</Length ${stream.length}>>stream\n${stream}\nendstream endobj\n5 0 obj<</Type/XObject/Subtype/Image/Width ${w}/Height ${h}/ColorSpace/DeviceRGB/BitsPerComponent 8/Filter/DCTDecode/Length ${img.length}>>stream\n`;
+  const out = [];
+  for (let i = 0; i < pdf.length; i++) out.push(pdf.charCodeAt(i));
+  for (let i = 0; i < img.length; i++) out.push(img.charCodeAt(i));
+  const tail = '\nendstream endobj\nxref\n0 6\ntrailer<</Size 6/Root 1 0 R>>\n%%EOF';
+  for (let i = 0; i < tail.length; i++) out.push(tail.charCodeAt(i));
+  return new Uint8Array(out);
+}
+
+
+// ─────────────────────────────────────────
+// КОНВЕРТАЦИЯ ДОКУМЕНТОВ
+// ─────────────────────────────────────────
+async function convertDoc(file, fmt) {
+  const text = await file.text();
+  const ext  = file.name.split('.').pop().toLowerCase();
+
+  if (fmt === 'txt') {
+    return new Blob([text.replace(/<[^>]+>/g, '').replace(/&nbsp;/g,' ')], { type: 'text/plain' });
+  }
+
+  if (fmt === 'html') {
+    let html = text;
+    if (ext === 'md' || ext === 'txt') {
+      // Простой Markdown → HTML
+      html = text
+        .replace(/^### (.+)/gm,'<h3>$1</h3>').replace(/^## (.+)/gm,'<h2>$1</h2>').replace(/^# (.+)/gm,'<h1>$1</h1>')
+        .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/\*(.+?)\*/g,'<em>$1</em>')
+        .replace(/\n\n/g,'</p><p>').replace(/\n/g,'<br>');
+      html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:sans-serif;max-width:800px;margin:2rem auto;line-height:1.7}</style></head><body><p>${html}</p></body></html>`;
+    }
+    return new Blob([html], { type: 'text/html' });
+  }
+
+  if (fmt === 'pdf') {
+    // Текст → простой PDF (первые 200 строк)
+    const lines = text.split('\n').slice(0, 200);
+    let stream = 'BT /F1 12 Tf 40 780 Td 14 TL\n';
+    lines.forEach(l => { stream += `(${l.replace(/[\\()]/g,'').slice(0,100)}) Tj T*\n`; });
+    stream += 'ET';
+    const pdf = `%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 595 842]/Contents 4 0 R/Resources<</Font<</F1<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>>>>>>>> endobj\n4 0 obj<</Length ${stream.length}>>stream\n${stream}\nendstream endobj\nxref\n0 5\ntrailer<</Size 5/Root 1 0 R>>\n%%EOF`;
+    return new Blob([pdf], { type: 'application/pdf' });
+  }
+}
+
+
+// ─────────────────────────────────────────
+// ЗАПУСК КОНВЕРТАЦИИ
+// ─────────────────────────────────────────
+async function convert(cat) {
+  const items = queue[cat];
+  if (!items.length) return;
+
+  const fill = document.getElementById('prog-' + cat + '-fill');
+  const lbl  = document.getElementById('prog-' + cat + '-lbl');
+  const pct  = document.getElementById('prog-' + cat + '-pct');
+  const prog = document.getElementById('prog-' + cat);
+  const res  = document.getElementById('res-'  + cat);
+  const list = document.getElementById('reslist-' + cat);
+
+  list.innerHTML = '';
+  res.classList.remove('on');
+  prog.classList.add('on');
+
+  const LIMIT = isPro ? 2 * 1024 * 1024 * 1024 : 500 * 1024 * 1024; // 2GB Pro / 500MB бесплатно
+  const results = [];
+
+  for (let i = 0; i < items.length; i++) {
+    const { file, fmt } = items[i];
+    fill.style.width = Math.round(i / items.length * 100) + '%';
+    pct.textContent  = Math.round(i / items.length * 100) + '%';
+    lbl.textContent  = `${file.name} → .${fmt}`;
+    const base = file.name.replace(/\.[^.]+$/, '');
+
+    if (file.size > LIMIT) {
+      results.push({ name: file.name, error: `Файл слишком большой (лимит ${isPro ? '2 GB' : '500 MB'})` });
+      continue;
+    }
+
+    try {
+      let blob;
+      if      (cat === 'image') blob = await convertImage(file, fmt);
+      else if (cat === 'doc')   blob = await convertDoc(file, fmt);
+      else                      blob = await convertAV(file, fmt, cat);
+      results.push({ name: `${base}.${fmt}`, blob });
+    } catch(e) {
+      results.push({ name: file.name, error: e.message });
+    }
+  }
+
+  fill.style.width = '100%'; pct.textContent = '100%'; lbl.textContent = 'Готово!';
+
+  results.forEach(r => {
+    const row = document.createElement('div');
+    row.className = 'res-row';
+    if (r.error) {
+      row.style.borderColor = 'var(--red)';
+      row.innerHTML = `<span class="res-name" style="color:var(--red)">${r.name}</span><span style="font-family:'Space Mono',monospace;font-size:.63rem;color:var(--muted)">${r.error}</span>`;
+    } else {
+      const url = URL.createObjectURL(r.blob);
+      row.innerHTML = `<span class="res-name">${r.name}</span><a href="${url}" download="${r.name}" class="dl">↓ Скачать</a>`;
+    }
+    list.appendChild(row);
+  });
+
+  res.classList.add('on');
+  setTimeout(() => prog.classList.remove('on'), 1800);
+}
+
+
+// ─────────────────────────────────────────
+// ПЕРЕКЛЮЧЕНИЕ ТАБОВ
+// ─────────────────────────────────────────
+function switchTab(el) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('on'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('on'));
+  el.classList.add('on');
+  document.getElementById('panel-' + el.dataset.p).classList.add('on');
+}
+
+
+// ─────────────────────────────────────────
+// КОНВЕРТЕР ЕДИНИЦ
+// ─────────────────────────────────────────
+const UNITS = [
+  { title: '⚖️ Вес', pairs: [
+    { from:'кг',  to:'фунт',   k: 2.20462 },
+    { from:'фунт',to:'кг',     k: 0.453592 },
+    { from:'г',   to:'унция',  k: 0.035274 },
+  ]},
+  { title: '📏 Длина', pairs: [
+    { from:'м',   to:'фут',    k: 3.28084 },
+    { from:'фут', to:'м',      k: 0.3048 },
+    { from:'км',  to:'миля',   k: 0.621371 },
+    { from:'см',  to:'дюйм',   k: 0.393701 },
+  ]},
+  { title: '🌡️ Температура', pairs: [
+    { from:'°C',  to:'°F',     fn: c => c*9/5+32,     inv: f => (f-32)*5/9 },
+    { from:'°F',  to:'°C',     fn: f => (f-32)*5/9,   inv: c => c*9/5+32 },
+    { from:'°C',  to:'K',      fn: c => c+273.15,      inv: k => k-273.15 },
+  ]},
+  { title: '💾 Данные', pairs: [
+    { from:'GB',  to:'MB',     k: 1024 },
+    { from:'MB',  to:'GB',     k: 1/1024 },
+    { from:'TB',  to:'GB',     k: 1024 },
+  ]},
+  { title: '🚀 Скорость', pairs: [
+    { from:'км/ч',to:'м/с',    k: 0.277778 },
+    { from:'миль/ч',to:'км/ч', k: 1.60934 },
+    { from:'узел',to:'км/ч',   k: 1.852 },
+  ]},
+  { title: '📐 Площадь', pairs: [
+    { from:'га',  to:'акр',    k: 2.47105 },
+    { from:'м²',  to:'фут²',   k: 10.7639 },
+    { from:'км²', to:'миля²',  k: 0.386102 },
+  ]},
+];
+
+function rnd(n) { return Math.round(n * 1e6) / 1e6; }
+
+function buildUnits() {
+  const grid = document.getElementById('unitGrid');
+  UNITS.forEach(group => {
+    const card = document.createElement('div');
+    card.className = 'unit-card';
+    let html = `<div class="unit-title">${group.title}</div>`;
+    group.pairs.forEach((p, pi) => {
+      const id = `u${group.title.replace(/\W/g,'')}${pi}`;
+      html += `<div class="unit-row">
+        <input class="unit-input" id="${id}a" type="number" placeholder="0"
+          oninput="calcU(this,'${id}',${JSON.stringify(p)},false)">
+        <span class="unit-lbl">${p.from}</span>
+        <span class="unit-arr">→</span>
+        <input class="unit-input" id="${id}b" type="number" placeholder="0"
+          oninput="calcU(this,'${id}',${JSON.stringify(p)},true)">
+        <span class="unit-lbl">${p.to}</span>
+      </div>`;
+    });
+    card.innerHTML = html;
+    grid.appendChild(card);
+  });
+}
+
+function calcU(el, id, p, reverse) {
+  const v = parseFloat(el.value);
+  const out = document.getElementById(id + (reverse ? 'a' : 'b'));
+  if (isNaN(v)) { out.value = ''; return; }
+  if (p.fn) {
+    out.value = rnd(reverse ? p.inv(v) : p.fn(v));
+  } else {
+    out.value = rnd(reverse ? v / p.k : v * p.k);
+  }
+}
+
+buildUnits();
+
+
+// ─────────────────────────────────────────
+// МОДАЛКА И ОПЛАТА
+// ─────────────────────────────────────────
+let selPlan = 'monthly';
+
+function openModal() {
+  if (isPro) return;
+  goStep1(); // всегда начинаем с выбора плана
+  document.getElementById('overlay').classList.add('on');
+}
+
+function closeModal() {
+  document.getElementById('overlay').classList.remove('on');
+}
+
+function goStep1() {
+  document.getElementById('step1').style.display = 'block';
+  document.getElementById('step2').style.display = 'none';
+}
+
+function goStep2(plan) {
+  selPlan = plan;
+  const labels = {
+    monthly: { title: 'Подписка · $4.99/мес', sub: 'Отмена в любой момент' },
+    yearly:  { title: 'Годовой план · $29/год', sub: '2 месяца в подарок' },
+  };
+  document.getElementById('s2title').textContent = labels[plan].title;
+  document.getElementById('s2sub').textContent   = labels[plan].sub;
+  document.getElementById('step1').style.display = 'none';
+  document.getElementById('step2').style.display = 'block';
+  setTimeout(() => document.getElementById('f-email').focus(), 50);
+}
+
+// Форматирование полей карты
+function fmtCard(el) {
+  const v = el.value.replace(/\D/g,'').slice(0,16);
+  el.value = v.replace(/(\d{4})(?=\d)/g,'$1 ');
+}
+function fmtExp(el) {
+  const v = el.value.replace(/\D/g,'').slice(0,4);
+  el.value = v.length >= 3 ? v.slice(0,2) + ' / ' + v.slice(2) : v;
+}
+
+// Валидация формы
+function validate() {
+  const fields = ['f-email','f-card','f-exp','f-cvv','f-name'];
+  fields.forEach(id => document.getElementById(id).classList.remove('err'));
+  document.getElementById('form-err').textContent = '';
+
+  const email = document.getElementById('f-email').value.trim();
+  const card  = document.getElementById('f-card').value.replace(/\s/g,'');
+  const exp   = document.getElementById('f-exp').value.replace(/\s|[/]/g,'');
+  const cvv   = document.getElementById('f-cvv').value.trim();
+  const name  = document.getElementById('f-name').value.trim();
+  const err   = document.getElementById('form-err');
+
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    document.getElementById('f-email').classList.add('err');
+    err.textContent = 'Введите корректный email'; return false;
+  }
+  if (card.length < 13) {
+    document.getElementById('f-card').classList.add('err');
+    err.textContent = 'Проверьте номер карты'; return false;
+  }
+  if (exp.length !== 4 || +exp.slice(0,2) < 1 || +exp.slice(0,2) > 12) {
+    document.getElementById('f-exp').classList.add('err');
+    err.textContent = 'Введите срок (ММ/ГГ)'; return false;
+  }
+  if (cvv.length < 3) {
+    document.getElementById('f-cvv').classList.add('err');
+    err.textContent = 'Введите CVV'; return false;
+  }
+  if (!name) {
+    document.getElementById('f-name').classList.add('err');
+    err.textContent = 'Введите имя как на карте'; return false;
+  }
+  return true;
+}
+
+async function pay() {
+  if (!validate()) return;
+
+  const btn   = document.getElementById('payBtn');
+  const email = document.getElementById('f-email').value.trim();
+  const link  = selPlan === 'yearly' ? LINK_YEAR : LINK_MONTH;
+
+  // Если ссылки ещё не добавлены — симулируем (для разработки)
+  if (!link) {
+    btn.disabled = true; btn.textContent = 'Обработка...';
+    setTimeout(() => { activatePro(); closeModal(); btn.disabled = false; btn.textContent = '★ Оплатить'; }, 1200);
+    return;
+  }
+
+  // Редирект на Stripe Payment Link
+  window.location.href = link + '?prefilled_email=' + encodeURIComponent(email) + '&success_url=' + encodeURIComponent(location.origin + location.pathname + '?pro=ok');
+}
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+</script>
+</body>
+</html>
